@@ -1,8 +1,8 @@
 import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick.Window 2.15
 import FFmpegPlayer 1.0
 
-ApplicationWindow {
+Window {
     id: app
     visible: true
     width: 800
@@ -17,6 +17,10 @@ ApplicationWindow {
     property url subtitleFontUrl: ""
     property alias subtitlesEnabled: player.subtitlesEnabled
     property string displayTitle: ""
+    // Optional cover supplied by the host; stays hidden after playback starts.
+    property url coverSource: ""
+    property bool playbackStarted: false
+    readonly property bool playing: player.playbackState === VideoPlayer.PlayingState
     property var headers: ({ "Referer": "https://www.bilibili.com/" })
     property real seekPreviewPosition: 0
     property real uiScale: Math.max(0.5, Math.min(width / 320, height / 170))
@@ -175,6 +179,8 @@ ApplicationWindow {
                 app.setOsdVisible(true)
             }
             onPlaybackStateChanged: {
+                if (player.playbackState === VideoPlayer.PlayingState)
+                    app.playbackStarted = true
                 if (player.loading || player.playbackState === VideoPlayer.StoppedState ||
                         (player.playbackState !== VideoPlayer.PlayingState && player.boosted))
                     gestureArea.cancelGesture()
@@ -188,6 +194,14 @@ ApplicationWindow {
             onVisibleChanged: if (!visible) gestureArea.cancelGesture()
             onEnabledChanged: if (!enabled) gestureArea.cancelGesture()
             Component.onDestruction: endBoost()
+        }
+
+        Image {
+            anchors.fill: parent
+            source: app.coverSource
+            visible: !app.playbackStarted
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
         }
 
         MouseArea {
@@ -332,16 +346,6 @@ ApplicationWindow {
     }
 
     Text {
-        anchors.centerIn: parent
-        visible: player.loading || player.seeking
-        text: player.loading ? "加载中…" : "定位中…"
-        color: "white"
-        font.pixelSize: 18
-        style: Text.Outline
-        styleColor: "#88000000"
-    }
-
-    Text {
         id: gestureIndicator
         objectName: "gestureIndicator"
         anchors.left: parent.left
@@ -396,12 +400,11 @@ ApplicationWindow {
         enabled: app.osdVisible
         Behavior on opacity { NumberAnimation { duration: 250 } }
 
-        ToolButton {
+        PlayerButton {
             id: resetZoomButton
             objectName: "resetZoomButton"
             width: 21 * app.uiScale
             height: 21 * app.uiScale
-            padding: 0
             onClicked: app.resetZoom()
             contentItem: Text {
                 text: "↺"
@@ -412,16 +415,15 @@ ApplicationWindow {
             }
             background: Rectangle {
                 radius: 5
-                color: parent.down ? "#99505a67" : "#66404a56"
+                color: "transparent"
             }
         }
 
-        ToolButton {
+        PlayerButton {
             id: zoomInButton
             objectName: "zoomInButton"
             width: 21 * app.uiScale
             height: 21 * app.uiScale
-            padding: 0
             onClicked: app.zoomIn()
             contentItem: Text {
                 text: "+"
@@ -432,17 +434,16 @@ ApplicationWindow {
             }
             background: Rectangle {
                 radius: 5
-                color: parent.down ? "#99505a67" : "#66404a56"
+                color: "transparent"
             }
         }
 
-        ToolButton {
+        PlayerButton {
             id: zoomOutButton
             objectName: "zoomOutButton"
             visible: app.zoomMode && app.zoomLevel > 0
             width: 21 * app.uiScale
             height: 21 * app.uiScale
-            padding: 0
             onClicked: app.zoomOut()
             contentItem: Text {
                 text: "−"
@@ -453,12 +454,12 @@ ApplicationWindow {
             }
             background: Rectangle {
                 radius: 5
-                color: parent.down ? "#99505a67" : "#66404a56"
+                color: "transparent"
             }
         }
     }
 
-    ToolButton {
+    PlayerButton {
         id: closeButton
         objectName: "closeButton"
         anchors.top: parent.top
@@ -467,7 +468,6 @@ ApplicationWindow {
         anchors.rightMargin: 10 * app.uiScale
         width: 23 * app.uiScale
         height: 23 * app.uiScale
-        padding: 0
         z: 3
         opacity: app.osdVisible ? 1 : 0
         enabled: app.osdVisible
@@ -482,7 +482,7 @@ ApplicationWindow {
         }
         background: Rectangle {
             radius: 5
-            color: parent.down ? "#99505a67" : "#66404a56"
+            color: "transparent"
         }
     }
 
@@ -493,12 +493,11 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.bottomMargin: app.edgeProgressEnabled && !app.zoomMode ? app.edgeProgressHeight : 0
-        height: Math.max(88, Math.min(128, parent.height * 0.34))
-        color: "transparent"
+        height: app.height < 250 ? 92 : 108
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#0010141b" }
-            GradientStop { position: 0.30; color: "#aa10141b" }
-            GradientStop { position: 1.0; color: "#ed090b10" }
+            GradientStop { position: 0.0; color: "#00151c26" }
+            GradientStop { position: 0.35; color: "#80151c26" }
+            GradientStop { position: 1.0; color: "#dc101620" }
         }
         z: 2
         visible: !app.zoomMode
@@ -511,14 +510,14 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.leftMargin: Math.max(8, parent.width * 0.025)
             anchors.rightMargin: Math.max(8, parent.width * 0.025)
-            anchors.topMargin: 5
-            anchors.bottomMargin: 10
-            spacing: 1
+            anchors.topMargin: 6
+            anchors.bottomMargin: 6
+            spacing: 3
 
             Item {
                 id: titleRow
                 width: parent.width
-                height: Math.max(18, Math.min(27, parent.height * 0.23))
+                height: app.height < 250 ? 18 : 22
 
                 Text {
                     anchors.left: parent.left
@@ -627,114 +626,64 @@ ApplicationWindow {
 
                 Row {
                     anchors.centerIn: parent
-                    spacing: 4
+                    spacing: 8
 
-                    ToolButton {
+                    PlayerButton {
                         id: backwardButton
-                        width: app.height < 250 ? 28 : 38
-                        height: app.height < 250 ? 26 : 36
-                        padding: 0
+                        width: app.height < 250 ? 36 : 44
+                        height: app.height < 250 ? 32 : 40
                         onClicked: player.seekBackward(10)
-                        contentItem: Item {
-                            width: 18; height: 18
-                            Rectangle { x: 0; y: 4; width: 2; height: 10; color: "#f4f6f8" }
-                            Text {
-                                x: 2; y: 0; width: 11; height: 18
-                                text: "◀"
-                                color: "#f4f6f8"
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text {
-                                x: 8; y: 0; width: 11; height: 18
-                                text: "◀"
-                                color: "#f4f6f8"
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
+                        contentItem: PlayerTransportIcon { direction: -1 }
                         background: Rectangle {
                             radius: 5
-                            color: parent.down ? "#554c5666" : parent.hovered ? "#443a4550" : "transparent"
+                            color: "transparent"
                         }
                     }
 
-                    ToolButton {
+                    PlayerButton {
                         id: playButton
                         objectName: "playButton"
-                        width: app.height < 250 ? 28 : 38
-                        height: app.height < 250 ? 26 : 36
-                        padding: 0
+                        width: app.height < 250 ? 36 : 44
+                        height: app.height < 250 ? 32 : 40
                         onClicked: {
                             var startsPlayback = player.playbackState === VideoPlayer.PausedState ||
                                     player.playbackState === VideoPlayer.StoppedState
                             player.togglePlayPause()
                             app.showOsdForPlayback(startsPlayback)
                         }
-                        contentItem: Text {
-                            text: player.playbackState === VideoPlayer.PlayingState ? "Ⅱ" : "▶"
-                            color: "white"
-                            font.pixelSize: app.height < 250 ? 18 : 20
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
+                        contentItem: PlayerTransportIcon {
+                            playing: app.playing
                         }
                         background: Rectangle {
                             radius: 5
-                            color: parent.down ? "#554c5666" : parent.hovered ? "#443a4550" : "transparent"
+                            color: "transparent"
                         }
                     }
 
-                    ToolButton {
+                    PlayerButton {
                         id: forwardButton
-                        width: app.height < 250 ? 28 : 38
-                        height: app.height < 250 ? 26 : 36
-                        padding: 0
+                        width: app.height < 250 ? 36 : 44
+                        height: app.height < 250 ? 32 : 40
                         onClicked: player.seekForward(10)
-                        contentItem: Item {
-                            width: 18; height: 18
-                            transform: Scale { origin.x: 9; xScale: -1 }
-                            Rectangle { x: 0; y: 4; width: 2; height: 10; color: "#f4f6f8" }
-                            Text {
-                                x: 2; y: 0; width: 11; height: 18
-                                text: "◀"
-                                color: "#f4f6f8"
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text {
-                                x: 8; y: 0; width: 11; height: 18
-                                text: "◀"
-                                color: "#f4f6f8"
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
+                        contentItem: PlayerTransportIcon { direction: 1 }
                         background: Rectangle {
                             radius: 5
-                            color: parent.down ? "#554c5666" : parent.hovered ? "#443a4550" : "transparent"
+                            color: "transparent"
                         }
                     }
                 }
 
-                ToolButton {
+                PlayerButton {
                     id: subtitleButton
                     objectName: "subtitleButton"
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     width: 48
                     height: app.height < 250 ? 28 : 32
-                    padding: 0
                     enabled: app.subtitleUrl.toString().length > 0
-                    checkable: true
                     checked: app.subtitlesEnabled
-                    onToggled: app.subtitlesEnabled = checked
+                    onClicked: app.subtitlesEnabled = !app.subtitlesEnabled
                     Accessible.name: checked ? "关闭字幕" : "开启字幕"
-                    ToolTip.visible: hovered
-                    ToolTip.text: checked ? "关闭字幕" : "开启字幕"
                     contentItem: Text {
                         text: "字幕"
                         color: !subtitleButton.enabled ? "#777f89" : subtitleButton.checked ? "#39a9ff" : "#edf1f5"
@@ -744,18 +693,17 @@ ApplicationWindow {
                     }
                     background: Rectangle {
                         radius: 4
-                        color: parent.down ? "#554c5666" : parent.hovered ? "#443a4550" : "transparent"
+                        color: "transparent"
                     }
                 }
 
-                ToolButton {
+                PlayerButton {
                     id: speedButton
                     objectName: "speedButton"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     width: 46
                     height: app.height < 250 ? 28 : 32
-                    padding: 0
                     onClicked: {
                         var rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
                         var index = 0
@@ -776,7 +724,7 @@ ApplicationWindow {
                     }
                     background: Rectangle {
                         radius: 4
-                        color: parent.down ? "#554c5666" : parent.hovered ? "#443a4550" : "transparent"
+                        color: "transparent"
                     }
                 }
             }

@@ -71,7 +71,7 @@ package("ffmpeg")
     -- 设备库缺失时自动退回纯软解构建，播放器运行时同样会走软解。
     -- 需要较新的 MPP（已移除 MPP_DEC_GET_FREE_PACKET_SLOT_COUNT），见 patches/0002。
     add_configs("rkmpp", {description = "Enable Rockchip MPP hardware decoders.", default = false, type = "boolean"})
-    add_configs("network_revision", {description = "Patched FFmpeg recipe revision (invalidates old builds).", default = 6, type = "number"})
+    add_configs("network_revision", {description = "Patched FFmpeg recipe revision (invalidates old builds).", default = 7, type = "number"})
 
     on_install("linux", "macosx", "android", "iphoneos", function (package)
         import("package.tools.autoconf")
@@ -230,7 +230,7 @@ add_requires("ffmpeg        3.4.8", {
     configs = {
         shared = false,
         pic = true,
-        network_revision = 6,
+        network_revision = 7,
         rkmpp = has_device_libs("librockchip_mpp.so.1", "libdrm.so.2"),
     }
 })

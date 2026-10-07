@@ -201,6 +201,6 @@ player.clearSubtitles()         // 清除内容，需重新加载才能显示
 | `FFPLAYER_HWDEC=force` | 调试时跳过硬解能力预检 |
 | `FFPLAYER_ZEROCOPY=0` | 禁用 DMA-BUF 导入，保留其他渲染路径 |
 | `FFPLAYER_GL=0` | 强制 CPU 转 RGBA |
-| `SSL_CERT_FILE` | HTTPS CA 证书文件，默认 `/etc/ssl/certs/ca-certificates.crt` |
+| `SSL_CERT_FILE` / `SSL_CERT_DIR` | 可选 HTTPS CA 文件 / 哈希证书目录；未设置时使用 OpenSSL 默认信任路径及设备 `/etc/ssl/certs`，不要求 CA 合集文件。显式配置加载失败时报错，始终校验证书链和主机名。 |
 
 HTTPS 默认验证证书链和主机名。设备系统时间和 CA 文件须正确。网络读写有超时及取消机制，尚不提供应用层自动重连、内嵌字幕轨选择或播放列表管理。
