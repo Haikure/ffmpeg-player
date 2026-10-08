@@ -45,6 +45,26 @@ package_end()
 add_requires("libass 0.17.4", {configs = {shared = false, pic = true,
     cxflags = {"-Os", "-fno-sanitize=all", "-ffunction-sections", "-fdata-sections"}}})
 
+package("ffplayer-openssl3")
+    set_base("openssl3")
+    on_install("linux", function (package)
+        import("package.tools.autoconf")
+        import("package.tools.make")
+        local envs = autoconf.buildenvs(package)
+        local arches = {arm64 = "aarch64", ["arm64-v8a"] = "aarch64", aarch64 = "aarch64",
+            x86_64 = "x86_64", x86 = "x86", i386 = "x86"}
+        local arch = assert(arches[package:arch()], "Unsupported OpenSSL architecture: " .. package:arch())
+        local configs = {"linux-" .. arch, "no-tests", "--libdir=lib",
+            "--openssldir=" .. package:installdir(), "--prefix=" .. package:installdir(),
+            package:config("shared") and "shared" or "no-shared",
+            package:config("multi-threading") and "threads" or "no-threads"}
+        if package:config("md2") then table.insert(configs, "enable-md2") end
+        os.vrunv("./Configure", configs, {envs = envs})
+        make.build(package, {CFLAGS = envs.CFLAGS, ASFLAGS = envs.ASFLAGS})
+        make.make(package, {"install_sw"})
+    end)
+package_end()
+
 package("ffmpeg")
     set_homepage("https://www.ffmpeg.org")
     set_description("FFmpeg 3.4.8")
@@ -57,7 +77,7 @@ package("ffmpeg")
     -- OpenSSL 配方通过 make CFLAGS 覆盖上游优化参数，必须显式指定发布优化。
     -- Zig 未优化构建会默认插入 UBSan 检查，静态链接后产生大量代码和重定位数据。
     local release_cflags = {"-Os", "-fno-sanitize=all", "-ffunction-sections", "-fdata-sections"}
-    add_deps("openssl3 3.5.7", {configs = {shared = false, pic = true, cxflags = release_cflags}})
+    add_deps("ffplayer-openssl3 3.5.7", {configs = {shared = false, pic = true, cxflags = release_cflags}})
     add_deps("libxml2 v2.13.4", {configs = {shared = false, pic = true, cxflags = release_cflags}})
 
     add_links("avfilter", "avdevice", "avformat", "avcodec", "swscale", "swresample", "avutil","postproc")
@@ -182,7 +202,7 @@ package("ffmpeg")
         local cflags = "-Wno-incompatible-function-pointer-types -fno-sanitize=all -ffunction-sections -fdata-sections"
         local ldflags = "-Wl,--undefined-version -Wl,-z,defs"
         local dependency_pcdirs = {}
-        for _, name in ipairs({"openssl3", "libxml2"}) do
+        for _, name in ipairs({"ffplayer-openssl3", "libxml2"}) do
             local dep = package:dep(name)
             table.insert(dependency_pcdirs, dep:installdir("lib/pkgconfig"))
             cflags = cflags .. " -I" .. dep:installdir("include")
