@@ -107,7 +107,7 @@ VideoPlayer {
 | `play()` / `pause()` / `stop()` | 播放、暂停、释放资源；EOF 后 `play()` 从头重播 |
 | `seek(seconds)` | 按秒跳转，连续请求以最后一次为准，暂停状态保持暂停 |
 | `seekForward(seconds)` / `seekBackward(seconds)` | 相对跳转，默认 10 秒 |
-| `playbackRate` | 0.5–2.0，改变速率会清空旧音频并重新定位 |
+| `playbackRate` | 0.5–2.0，变速不变调，切换不重新定位 |
 | `boostRate` | 长按倍率，默认 2.0，范围 0.5–2.0，与 `playbackRate` 独立 |
 | `beginBoost()` / `endBoost()` | 临时使用 `boostRate`，结束时固定恢复 1.0 倍速 |
 | `source` / `audioSource` / `httpHeaders` | 输入与 HTTP 请求头；`autoPlay` 默认关闭 |
