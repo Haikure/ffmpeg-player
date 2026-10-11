@@ -36,11 +36,12 @@ xmake f -c -p linux -a arm64-v8a -m release \
 ### 2. 编译 FFmpeg、libass 及其静态依赖
 
 ```sh
-xmake require -v ffmpeg
-xmake require -v libass
+xmake require -v
 ```
 
 首次构建时，Xmake 会获取并编译 FFmpeg 3.4.8、OpenSSL 3、libxml2、libass 0.17.4、FreeType、HarfBuzz 和 FriBidi，后续构建复用缓存。构建过程中应用 `patches/` 中的补丁，并将库安装到 Xmake 包缓存。若 `external/dictpen/` 中存在设备版 `librockchip_mpp.so.1` 和 `libdrm.so.2`，FFmpeg 同时启用 Rockchip MPP 解码；否则构建软解版本。
+
+修改播放器代码后直接执行 `xmake build ffmpegplayerplugin`，无需修改 `network_revision` 或强制重编依赖。`network_revision` 用于 FFmpeg 补丁或构建配方变化时使旧包失效；OpenSSL 等依赖的名称或构建配置变化由严格兼容检查处理，FFmpeg 会重建一次并更新依赖记录。
 
 ### 3. 编译 QML 插件
 

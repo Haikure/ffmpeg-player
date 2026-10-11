@@ -69,6 +69,8 @@ package("ffmpeg")
     set_homepage("https://www.ffmpeg.org")
     set_description("FFmpeg 3.4.8")
     set_license("GPL-3.0")
+    -- 依赖名称或配置变化后不能复用旧安装记录，否则会遗漏 OpenSSL 等静态链接依赖。
+    set_policy("package.librarydeps.strict_compatibility", true)
 
     add_urls("https://ffmpeg.org/releases/ffmpeg-$(version).tar.bz2", {alias = "home"})
 
