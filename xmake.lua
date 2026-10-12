@@ -79,7 +79,7 @@ package("ffmpeg")
     -- OpenSSL 配方通过 make CFLAGS 覆盖上游优化参数，必须显式指定发布优化。
     -- Zig 未优化构建会默认插入 UBSan 检查，静态链接后产生大量代码和重定位数据。
     local release_cflags = {"-Os", "-fno-sanitize=all", "-ffunction-sections", "-fdata-sections"}
-    add_deps("ffplayer-openssl3 3.5.7", {configs = {shared = false, pic = true, cxflags = release_cflags}})
+    add_deps("ffplayer-openssl3 3.5.6", {configs = {shared = false, pic = true, cxflags = release_cflags}})
     add_deps("libxml2 v2.13.4", {configs = {shared = false, pic = true, cxflags = release_cflags}})
 
     add_links("avfilter", "avdevice", "avformat", "avcodec", "swscale", "swresample", "avutil","postproc")
