@@ -632,8 +632,7 @@ public:
 
   void SetSampling(bool downsampling, bool smooth) {
     const bool multisampling = downsampling;
-    // Disabling downsampling also guarantees an unfiltered zoom path.
-    smooth = downsampling && smooth;
+    // Texture filtering is independent of multi-tap downsampling.
     if (multisampling_ == multisampling && smooth_ == smooth)
       return;
     multisampling_ = multisampling;
@@ -954,7 +953,7 @@ public:
       cpu_dirty_ = true;
     }
     if (tex_node_) {
-      tex_node_->setFiltering(downsampling_ && smooth_ ? QSGTexture::Linear : QSGTexture::Nearest);
+      tex_node_->setFiltering(smooth_ ? QSGTexture::Linear : QSGTexture::Nearest);
       tex_node_->markDirty(QSGNode::DirtyMaterial);
     }
   }

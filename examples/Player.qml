@@ -171,7 +171,7 @@ Window {
             progressBarPosition: app.previewSeeking ? app.seekPreviewPosition : -1
             anchors.fill: parent
             downsamplingEnabled: !app.zoomMode
-            smooth: !app.zoomMode
+            smooth: true
             scale: Math.pow(2, app.zoomLevel)
             transformOrigin: Item.Center
             transform: Translate { x: app.panX; y: app.panY }
