@@ -31,7 +31,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            binutils curl file make patch pkg-config unzip zip
+            binutils curl file g++ make patch pkg-config qtbase5-dev-tools \
+            qtdeclarative5-dev-tools unzip zip
 
       - name: Set up xmake
         uses: xmake-io/github-action-setup-xmake@v1
@@ -64,9 +65,13 @@ jobs:
           mkdir -p "$extract"
           tar -xzf "$archive" -C "$extract"
 
-          qt_root="$(find "$extract" -path '*/bin/qmake' -print -quit | sed 's#/bin/qmake$##')"
-          [[ -n "$qt_root" ]] || { echo 'Qt SDK does not contain bin/qmake' >&2; exit 1; }
-          [[ -x "$qt_root/bin/qmake" ]] || { echo "Qt qmake is not executable: $qt_root/bin/qmake" >&2; exit 1; }
+          qt_root="$extract"
+          [[ -f "$qt_root/bin/qmake.cpp" ]] || { echo 'Qt SDK does not contain bin/qmake.cpp' >&2; exit 1; }
+          (
+            cd "$qt_root/bin"
+            g++ -fmax-errors=1 -o qmake -D"PREFIX=\"$qt_root\"" qmake.cpp
+          )
+          [[ -x "$qt_root/bin/qmake" ]] || { echo "Failed to build host qmake: $qt_root/bin/qmake" >&2; exit 1; }
           [[ -x "$qt_root/bin/moc" ]] || { echo "Qt moc is not executable: $qt_root/bin/moc" >&2; exit 1; }
           [[ -d "$qt_root/include/QtCore" ]] || { echo "Qt headers are missing: $qt_root/include/QtCore" >&2; exit 1; }
           qt_core="$(find "$qt_root/lib" -maxdepth 1 -name 'libQt5Core.so*' -print -quit)"
