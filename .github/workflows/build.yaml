@@ -1,0 +1,180 @@
+name: Build FFmpegPlayer release
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ffmpegplayer-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  QT_URL: https://github.com/Redbeanw44602/aarch64-linux-qt-5.15.2/releases/latest/download/aarch64-linux-qt-5.15.2.tar.gz
+  CROSS_TARGET: aarch64-linux-gnu.2.27
+
+jobs:
+  build:
+    name: Build ARM64 Qt plugin
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install host build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            binutils curl file make patch pkg-config unzip zip
+
+      - name: Set up xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache xmake packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.xmake
+            .xmake
+          key: ffmpegplayer-xmake-${{ hashFiles('xmake.lua', 'patches/*.patch') }}
+          restore-keys: |
+            ffmpegplayer-xmake-
+
+      - name: Download ARM64 Qt 5.15.2 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/aarch64-linux-qt-5.15.2.tar.gz"
+          extract="$RUNNER_TEMP/qt-sdk"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "$archive" "$QT_URL"
+          mkdir -p "$extract"
+          tar -xzf "$archive" -C "$extract"
+
+          qt_root="$(find "$extract" -path '*/bin/qmake' -print -quit | sed 's#/bin/qmake$##')"
+          [[ -n "$qt_root" ]] || { echo 'Qt SDK does not contain bin/qmake' >&2; exit 1; }
+          [[ -x "$qt_root/bin/qmake" ]] || { echo "Qt qmake is not executable: $qt_root/bin/qmake" >&2; exit 1; }
+          [[ -x "$qt_root/bin/moc" ]] || { echo "Qt moc is not executable: $qt_root/bin/moc" >&2; exit 1; }
+          [[ -d "$qt_root/include/QtCore" ]] || { echo "Qt headers are missing: $qt_root/include/QtCore" >&2; exit 1; }
+          qt_core="$(find "$qt_root/lib" -maxdepth 1 -name 'libQt5Core.so*' -print -quit)"
+          [[ -n "$qt_core" ]] || {
+            echo "Qt ARM64 libraries are missing under $qt_root/lib" >&2
+            exit 1
+          }
+
+          echo "QT_ROOT=$qt_root" >> "$GITHUB_ENV"
+          echo "$qt_root/bin" >> "$GITHUB_PATH"
+          "$qt_root/bin/qmake" -query QT_VERSION
+          file "$qt_root/bin/qmake" "$qt_core"
+
+      - name: Configure ARM64 release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          xmake f -c -p linux -a arm64-v8a -m release \
+            --toolchain=zigcc \
+            --cross="$CROSS_TARGET" \
+            --qt="$QT_ROOT" \
+            --ccache=n -y
+
+      - name: Build FFmpeg and plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          xmake require -v
+          xmake -v -j"$(nproc)" ffmpegplayerplugin
+
+      - name: Install and package plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/ffmpegplayer-install"
+          package_dir="$RUNNER_TEMP/ffmpegplayer-package"
+          archive="$GITHUB_WORKSPACE/FFmpegPlayer.zip"
+          module_dir="$install_dir/qml/FFmpegPlayer"
+
+          rm -rf "$install_dir" "$package_dir" "$archive"
+          xmake install -o "$install_dir" ffmpegplayerplugin
+
+          [[ -f "$module_dir/libffmpegplayerplugin.so" ]] || {
+            echo "plugin was not installed: $module_dir/libffmpegplayerplugin.so" >&2
+            exit 1
+          }
+          [[ -f "$module_dir/qmldir" ]] || {
+            echo "qmldir was not installed: $module_dir/qmldir" >&2
+            exit 1
+          }
+          grep -Fxq 'module FFmpegPlayer' "$module_dir/qmldir"
+          grep -Fxq 'plugin ffmpegplayerplugin' "$module_dir/qmldir"
+          readelf -h "$module_dir/libffmpegplayerplugin.so" | grep -Fq 'AArch64'
+          file "$module_dir/libffmpegplayerplugin.so"
+
+          mkdir -p "$package_dir/FFmpegPlayer"
+          cp -a "$module_dir/." "$package_dir/FFmpegPlayer/"
+          (
+            cd "$package_dir"
+            zip -9 -r "$archive" FFmpegPlayer
+          )
+
+          roots="$(unzip -Z1 "$archive" | awk -F/ 'NF {print $1}' | sort -u)"
+          [[ "$roots" == 'FFmpegPlayer' ]] || {
+            echo "ZIP must contain only the FFmpegPlayer top-level directory:" >&2
+            printf '%s\n' "$roots" >&2
+            exit 1
+          }
+          unzip -Z1 "$archive"
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ffmpegplayer-aarch64-linux-gnu-2.27
+          path: FFmpegPlayer.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Download build ZIP
+        uses: actions/download-artifact@v5
+        with:
+          name: ffmpegplayer-aarch64-linux-gnu-2.27
+          path: release-assets
+
+      - name: Verify release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find release-assets -maxdepth 1 -type f -name '*.zip' | wc -l)" -eq 1
+          unzip -Z1 release-assets/*.zip | awk -F/ 'NF {print $1}' | sort -u | grep -Fxq 'FFmpegPlayer'
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: CHANGELOG.md
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+          files: release-assets/*.zip
