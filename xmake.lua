@@ -93,7 +93,7 @@ package("ffmpeg")
     -- 设备库缺失时自动退回纯软解构建，播放器运行时同样会走软解。
     -- 需要较新的 MPP（已移除 MPP_DEC_GET_FREE_PACKET_SLOT_COUNT），见 patches/0002。
     add_configs("rkmpp", {description = "Enable Rockchip MPP hardware decoders.", default = false, type = "boolean"})
-    add_configs("network_revision", {description = "Patched FFmpeg recipe revision (invalidates old builds).", default = 7, type = "number"})
+    add_configs("network_revision", {description = "Patched FFmpeg recipe revision (invalidates old builds).", default = 11, type = "number"})
 
     on_install("linux", "macosx", "android", "iphoneos", function (package)
         import("package.tools.autoconf")
@@ -159,12 +159,12 @@ package("ffmpeg")
             "--enable-postproc",
             -- 解码器/格式支持
             "--enable-decoder=" .. decoders,
-            "--enable-demuxer=mov,dash,matroska,flv,mpegts,mpegps,avi,asf,rm,mp3,ogg,wav,aac,flac,mjpeg,mpegvideo,h264,hevc,image2",
+            "--enable-demuxer=mov,dash,hls,matroska,flv,mpegts,mpegps,avi,asf,rm,mp3,ogg,wav,aac,flac,mjpeg,mpegvideo,h264,hevc,image2",
             "--enable-muxer=mp4,mov,matroska,flv,mpegts,mpegps,avi,asf,mp3,ogg,wav,image2",
             "--enable-parser=h264,hevc,vp8,vp9,mpeg4video,mpeg1video,mpeg2video,vc1,aac,opus,flac,vorbis,ac3,dca,mpegaudio",
             -- rkmpp 需要 Annex-B 码流（decoder 内部自动挂 bsf）
             "--enable-bsf=h264_mp4toannexb,hevc_mp4toannexb",
-            "--enable-protocol=file,http,https,tls_openssl,tcp,udp,rtp,rtmp,rtmps,concat,data,pipe",
+            "--enable-protocol=file,http,https,tls_openssl,tcp,udp,rtp,rtmp,rtmps,concat,crypto,data,pipe",
             "--enable-filter=scale,overlay,pad,crop,yadif,setpts,atempo,abuffer,abuffersink,aformat,aresample,fps,format,transpose",
         }
 
@@ -230,7 +230,7 @@ package("ffmpeg")
         -- 9. 执行安装
         os.vrunv("./configure", configs, {envs = envs})
         local enabled = io.readfile("config.h")
-        for _, feature in ipairs({"HTTPS_PROTOCOL", "TLS_OPENSSL_PROTOCOL", "DASH_DEMUXER", "ATEMPO_FILTER", "AFORMAT_FILTER", "ARESAMPLE_FILTER"}) do
+        for _, feature in ipairs({"HTTPS_PROTOCOL", "TLS_OPENSSL_PROTOCOL", "DASH_DEMUXER", "HLS_DEMUXER", "CRYPTO_PROTOCOL", "ATEMPO_FILTER", "AFORMAT_FILTER", "ARESAMPLE_FILTER"}) do
             assert(enabled:find("#define CONFIG_" .. feature .. " 1", 1, true), "FFmpeg feature missing: " .. feature)
         end
         os.vrunv("make", {"-j" .. os.default_njob()})
@@ -252,7 +252,7 @@ add_requires("ffmpeg        3.4.8", {
     configs = {
         shared = false,
         pic = true,
-        network_revision = 7,
+        network_revision = 11,
         rkmpp = has_device_libs("librockchip_mpp.so.1", "libdrm.so.2"),
     }
 })
