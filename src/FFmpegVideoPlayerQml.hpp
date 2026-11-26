@@ -42,6 +42,9 @@
 #include "VideoPacketDrop.hpp"
 #include "SubtitleOverlay.hpp"
 #include "PlaybackSession.hpp"
+#ifdef FFPLAYER_SHUTDOWN_DIAGNOSTICS
+#include "ShutdownEventProbe.hpp"
+#endif
 #include <QPointer>
 
 #include <QQmlEngine>
@@ -206,6 +209,8 @@ public:
   }
 
   ~VideoPlayer() override {
+    ShutdownTrace trace("player-destroy", this);
+    if (playback_) traceShutdownWindow();
     // QQuickItem emits windowChanged while detaching in its base destructor.
     // Its signals must no longer call slots that access VideoPlayer members.
     disconnect(this, nullptr, this, nullptr);
@@ -967,6 +972,8 @@ private:
 
   void stopInternal() {
     if (state_ == StoppedState && !playback_) return;
+    ShutdownTrace trace("player-stop", this);
+    traceShutdownWindow();
     const auto stopId = ++session_id_;
     const bool notifySeeking = seeking();
     const bool notifyBuffering = buffering_;
@@ -996,6 +1003,7 @@ private:
     // QML handlers may immediately open another source or destroy this item.
     // Finish the reset before notifying, then stop notifying a retired state.
     const QPointer<VideoPlayer> guard(this);
+    trace.Step("stop-state-reset");
     const auto current = [guard, stopId] {
       return guard && guard->session_id_.load() == stopId;
     };
@@ -1024,6 +1032,46 @@ private:
     emit videoSizeChanged();
     if (!current()) return;
     emit mediaStatusChanged();
+  }
+
+  void traceShutdownWindow() {
+    auto *target = window();
+    if (!ShutdownTrace::Enabled() || !target) return;
+    // Survive the player/page: a fast stop() says nothing about the following
+    // scene-graph synchronization or the first frame showing the previous page.
+#ifdef FFPLAYER_SHUTDOWN_DIAGNOSTICS
+    auto *probe = new ShutdownEventProbe(target);
+#else
+    auto *probe = new QObject(target);
+#endif
+    const double start = ShutdownTrace::Now();
+    ShutdownTrace::Event("window-probe-start", target, start);
+    // An in-flight frame can swap just after stop(), before the close is
+    // synchronized. Only report an ordered sync/render/swap sequence.
+    const auto phase = std::make_shared<std::atomic<unsigned>>(0);
+    const auto watch = [probe, target, start, phase](auto signal, unsigned step, const char *stage) {
+      QObject::connect(target, signal, probe, [phase, step, target, start, stage] {
+        unsigned expected = step;
+        if (phase->compare_exchange_strong(expected, step + 1))
+          ShutdownTrace::Event(stage, target, start);
+      }, Qt::DirectConnection);
+    };
+    watch(&QQuickWindow::beforeSynchronizing, 0, "before-sync");
+    watch(&QQuickWindow::afterSynchronizing, 1, "after-sync");
+    watch(&QQuickWindow::afterRendering, 2, "after-render");
+    watch(&QQuickWindow::frameSwapped, 3, "frame-swapped");
+    QTimer::singleShot(0, probe, [target, start] {
+      ShutdownTrace::Event("next-gui-event", target, start);
+    });
+    auto *heartbeat = new QTimer(probe);
+    heartbeat->setInterval(16);
+    QObject::connect(heartbeat, &QTimer::timeout, probe, [target, previous = start]() mutable {
+      const double now = ShutdownTrace::Now();
+      if (now - previous >= 50) ShutdownTrace::Event("gui-gap", target, previous);
+      previous = now;
+    });
+    heartbeat->start();
+    QTimer::singleShot(2000, probe, &QObject::deleteLater);
   }
 
   // ─── 启动播放 ─────────────────────────────

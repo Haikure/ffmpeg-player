@@ -21,6 +21,7 @@
 
 #include "DrmPrime.hpp"
 #include "FFmpegCore.hpp"
+#include "ShutdownTrace.hpp"
 
 #include <chrono>
 #include <deque>
@@ -224,7 +225,9 @@ private:
   static constexpr int64_t kMaxHwPixels = 1920LL * 1088;
 
   void Cleanup() {
+    ShutdownTrace trace("decoder-cleanup", this, ctx_ || frame_);
     FreeContext();
+    trace.Step("codec-context-freed");
     if (params_)
       avcodec_parameters_free(&params_);
     if (frame_)

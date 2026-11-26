@@ -10,6 +10,7 @@
 #include "PacketCache.hpp"
 #include "PlaybackController.hpp"
 #include "PlaybackLifecycle.hpp"
+#include "ShutdownTrace.hpp"
 #include "VideoPacketDrop.hpp"
 #include <QString>
 #include <atomic>
@@ -114,6 +115,7 @@ public:
 
   static void Retire(std::shared_ptr<PlaybackSession> session) {
     if (!session) return;
+    ShutdownTrace trace("session-retire", session.get());
     session->ui_.Disconnect();
     session->is_running_.store(false, std::memory_order_release);
     PlaybackCleanup::Instance().Enqueue([session = std::move(session)] {
@@ -207,10 +209,12 @@ private:
 
   void finishStop() {
     if (stop_finished_) return;
+    ShutdownTrace trace("session-cleanup", this);
     is_running_.store(false, std::memory_order_release);
     packet_cache_.Abort();
     ready_frames_.Abort();
     joinAllThreads();
+    trace.Step("workers-joined");
     packet_cache_.Clear();
     ready_frames_.Clear();
     {
@@ -219,6 +223,7 @@ private:
     }
     demuxer_.reset();
     audio_decoder_.reset();
+    trace.Step("input-audio-freed");
     // Rendered frames retain this session. Keep the video decoder alive until
     // their last reference is returned, then destroy it on the cleanup worker.
     stop_finished_ = true;
